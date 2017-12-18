@@ -9,19 +9,26 @@ require 'open-uri'
 
 IMDB = 'http://www.imdb.com'
 
+# utility method to parse docs with consistent options and host handling
 def parse_uri(uri)
   puts "parsing #{uri}"
-  doc = Nokogiri::HTML(open uri) { |config| config.recover.noent }
-  rows = doc.css '.lister-list tr'
-
-  # we are only going to sample to first few
-  most_popular = rows[0,3].map { |row| parse_most_popular row }
-
-  # continue by parsing each show/movie
-  most_popular.map { | watchable | parse_watchable watchable }
+  Nokogiri::HTML(open IMDB + uri) { |config| config.recover.noent }
 end
 
-def parse_most_popular(row)
+# parse the most popular page
+def parse_most_popular(uri)
+  doc = parse_uri uri
+
+  # we are only going to sample to first few
+  rows = doc.css '.lister-list tr'
+  most_popular = rows[0,1].map { |row| parse_summary row }
+
+  # continue by parsing each show/movie
+  most_popular.map { | watchable | parse_details watchable }
+end
+
+# parse each item in the most popular page
+def parse_summary(row)
   result = {}
 
   result['title'] = row.css('.titleColumn a').text.strip
@@ -40,9 +47,10 @@ def parse_most_popular(row)
   result
 end
 
-def parse_watchable(watchable)
+# get the details of a watchable item from its page
+def parse_details(watchable)
   puts "parsing details #{watchable['title']}"
-  doc = Nokogiri::HTML(open IMDB + watchable['uri']) { |config| config.recover.noent }
+  doc = parse_uri watchable['uri']
   type = doc.css('meta[property="og:type"]').attribute('content').value
 
   # title wrapper
@@ -57,7 +65,9 @@ def parse_watchable(watchable)
     watchable['episodeCount'] = doc.css('.np_episode_guide .bp_description .bp_sub_heading').text.strip.sub(' episodes', '').to_i
     episode_guide_url = doc.css('.np_episode_guide').attribute('href').value
     watchable['episodeGuideUri'] = episode_guide_url
-    #parse_episodes episode_guide_url
+
+    season_uris = doc.css('.seasons-and-year-nav div:nth-of-type(3) a').map {|i| i.attribute('href').value }.reverse
+    season_uris.each { |uri| parse_season uri }
   elsif type == 'video.movie'
     watchable['releaseDate'] = doc.css('.title_wrapper [itemprop="datePublished"]').first.attribute('content').value
     watchable['director'] = doc.css('.plot_summary_wrapper [itemprop="director"]').text.strip
@@ -73,15 +83,18 @@ def parse_watchable(watchable)
   watchable
 end
 
-def parse_datetime timestr
+# utility method to parse datetimes using IMDBs formatting
+def parse_datetime(timestr)
   m = timestr.match /^PT(\d+)M$/
   m ? m[1].to_i : -1
 end
 
-def parse_episdoes uri
-  doc = Nokogiri::HTML(open uri)
+# parse a tv show season
+def parse_season(uri)
+  doc = parse_uri uri
 
 end
 
-uris = ["#{IMDB}/chart/tvmeter", "#{IMDB}/chart/moviemeter"]
-uris.map { | uri | parse_uri uri }.flatten
+# here's where we kick things off
+uris = %w(/chart/tvmeter /chart/moviemeter)
+uris.map { | uri | parse_summary uri }.flatten
