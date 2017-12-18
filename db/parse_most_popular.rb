@@ -38,8 +38,8 @@ def parse_summary(row)
   unless rating_element.empty?
     rating_match = rating_element.attribute('title').value.match /^(.*) based on (.*) user ratings$/
     if rating_match
-      result['imdbRating'] = rating_match[1]
-      result['imdbRatingCount'] = rating_match[2]
+      result['imdb_rating'] = rating_match[1].to_i
+      result['imdb_rating_count'] = rating_match[2].to_i
     end
   end
 
@@ -62,18 +62,18 @@ def parse_details(watchable)
   watchable['description'] = doc.css('.plot_summary_wrapper [itemprop="description"]').text.strip
 
   if type == 'video.tv_show'
-    watchable['episodeCount'] = doc.css('.np_episode_guide .bp_description .bp_sub_heading').text.strip.sub(' episodes', '').to_i
+    watchable['episode_count'] = doc.css('.np_episode_guide .bp_description .bp_sub_heading').text.strip.sub(' episodes', '').to_i
     episode_guide_url = doc.css('.np_episode_guide').attribute('href').value
-    watchable['episodeGuideUri'] = episode_guide_url
+    watchable['episode_guide_uri'] = episode_guide_url
 
     season_uris = doc.css('.seasons-and-year-nav div:nth-of-type(3) a').map {|i| i.attribute('href').value }.reverse
     season_uris.each { |uri| parse_season uri }
   elsif type == 'video.movie'
-    watchable['releaseDate'] = doc.css('.title_wrapper [itemprop="datePublished"]').first.attribute('content').value
+    watchable['release_date'] = doc.css('.title_wrapper [itemprop="datePublished"]').first.attribute('content').value
     watchable['director'] = doc.css('.plot_summary_wrapper [itemprop="director"]').text.strip
     watchable['writers'] = doc.css('.plot_summary_wrapper [itemprop="creator"]').map {|i| i.text.strip}
     watchable['stars'] = doc.css('.plot_summary_wrapper [itemprop="actors"]').map {|i| i.text.strip}
-    watchable['metacriticScore'] = doc.css('.plot_summary_wrapper .metacriticScore').text.strip.to_i
+    watchable['metacritic_score'] = doc.css('.plot_summary_wrapper .metacriticScore').text.strip.to_i
   end
 
   # other
@@ -92,7 +92,16 @@ end
 # parse a tv show season
 def parse_season(uri)
   doc = parse_uri uri
+  season_number = doc.css('#episode_top').text.sub(/Season\u00A0/,'').to_i
+  episodes = doc.css('[itemprop="episodes"]')
+  episodes.map { |e| parse_episode e }.map { |e| e['season_number'] = season_number }
+end
 
+def parse_episode episode
+  result = {}
+  result['episode_number'] = episode.css('[itemprop="episodeNumber"]').attribute('content').value.to_i
+  result['airdate'] = episode.css('.airdate').text
+  # TODO: episode details
 end
 
 # here's where we kick things off
