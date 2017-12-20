@@ -1,7 +1,12 @@
-# This file should contain all the record creation needed to seed the database with its default values.
-# The data can then be loaded with the rails db:seed command (or created alongside the database with db:setup).
-#
-# Examples:
-#
-#   movies = Movie.create([{ name: 'Star Wars' }, { name: 'Lord of the Rings' }])
-#   Character.create(name: 'Luke', movie: movies.first)
+require './db/parse_most_popular'
+require 'pp'
+
+watchables = MOST_POPULAR.map { |uri| parse_most_popular uri, 3 }.flatten
+
+watchables.each do | watchable |
+  watchable['genres'] = watchable['genres'].map { |g| Genre.new name: g }
+  watchable['episodes'] = watchable['episodes'] ? watchable['episodes'].map { |e| Episode.new e } : []
+  w = Watchable.new watchable
+  w.save
+  w.episodes.each { |e| e.watchable = w; e.save }
+end

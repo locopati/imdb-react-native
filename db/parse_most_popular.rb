@@ -1,5 +1,6 @@
 require 'nokogiri'
 require 'open-uri'
+require 'time'
 
 # my approach in doing a quick parsing project like this is build in checks as they are needed
 # rather than try to anticipate all the things that _could_ go wrong
@@ -8,20 +9,22 @@ require 'open-uri'
 # and rely on getting it right by running the script and fixing parsing problems that come up as we go
 
 IMDB = 'http://www.imdb.com'
+MOST_POPULAR = %w(/chart/tvmeter /chart/moviemeter)
 
 # utility method to parse docs with consistent options and host handling
 def parse_uri(uri)
   puts "parsing #{uri}"
-  Nokogiri::HTML(open IMDB + uri) { |config| config.recover.noent }
+  uri = IMDB + uri if uri =~ /^\//
+  Nokogiri::HTML(open uri) { |config| config.recover.noent }
 end
 
 # parse the most popular page
-def parse_most_popular(uri)
+def parse_most_popular(uri, count = nil)
   doc = parse_uri uri
 
   # we are only going to sample to first few
   rows = doc.css '.lister-list tr'
-  most_popular = rows[0,1].map { |row| parse_summary row }
+  most_popular = rows[0, count || rows.count].map { |row| parse_summary row }
 
   # continue by parsing each show/movie
   most_popular.map { | watchable | parse_details watchable }
@@ -32,7 +35,7 @@ def parse_summary(row)
   result = {}
 
   result['title'] = row.css('.titleColumn a').text.strip
-  result['uri'] = row.css('.titleColumn a').attribute('href').value.strip
+  result['imdb_uri'] = IMDB + row.css('.titleColumn a').attribute('href').value.strip
 
   rating_element = row.css('.imdbRating strong')
   unless rating_element.empty?
@@ -43,43 +46,47 @@ def parse_summary(row)
     end
   end
 
-  puts result
+  #puts result
   result
 end
 
 # get the details of a watchable item from its page
 def parse_details(watchable)
   puts "parsing details #{watchable['title']}"
-  doc = parse_uri watchable['uri']
+  doc = parse_uri watchable['imdb_uri']
   type = doc.css('meta[property="og:type"]').attribute('content').value
 
   # title wrapper
-  watchable['rating'] = doc.css('.title_wrapper [itemprop="contentRating"]').first.attribute('content').value
-  watchable['length'] = parse_datetime(doc.css('.title_wrapper [itemprop="duration"]').first.attribute('datetime').value)
+  watchable['rating'] = doc.at_css('.title_wrapper [itemprop="contentRating"]').attribute('content').value
+  watchable['minutes'] = parse_datetime(doc.at_css('.title_wrapper [itemprop="duration"]').attribute('datetime').value)
   watchable['genres'] = doc.css('.title_wrapper [itemprop="genre"]').map {|i| i.text.strip }
 
   # plot summary wrapper
   watchable['description'] = doc.css('.plot_summary_wrapper [itemprop="description"]').text.strip
 
+  # tv shows
   if type == 'video.tv_show'
-    watchable['episode_count'] = doc.css('.np_episode_guide .bp_description .bp_sub_heading').text.strip.sub(' episodes', '').to_i
+    #watchable['creator'] = doc.css('[itemprop="creator"]').text.strip
+    #watchable['stars'] = doc.css('[itemprop="actors"]').map {|i| parse_name i.text }
+
     episode_guide_url = doc.css('.np_episode_guide').attribute('href').value
-    watchable['episode_guide_uri'] = episode_guide_url
+    watchable['imdb_episode_guide_uri'] = episode_guide_url
 
     season_uris = doc.css('.seasons-and-year-nav div:nth-of-type(3) a').map {|i| i.attribute('href').value }.reverse
-    season_uris.each { |uri| parse_season uri }
+    watchable['episodes'] = season_uris.map { |uri| parse_season uri }.flatten
+  # movies
   elsif type == 'video.movie'
-    watchable['release_date'] = doc.css('.title_wrapper [itemprop="datePublished"]').first.attribute('content').value
-    watchable['director'] = doc.css('.plot_summary_wrapper [itemprop="director"]').text.strip
-    watchable['writers'] = doc.css('.plot_summary_wrapper [itemprop="creator"]').map {|i| i.text.strip}
-    watchable['stars'] = doc.css('.plot_summary_wrapper [itemprop="actors"]').map {|i| i.text.strip}
+    watchable['release_date'] = Time.parse doc.at_css('.title_wrapper [itemprop="datePublished"]').attribute('content').value
     watchable['metacritic_score'] = doc.css('.plot_summary_wrapper .metacriticScore').text.strip.to_i
+    #watchable['director'] = doc.css('.plot_summary_wrapper [itemprop="director"]').text.strip
+    #watchable['writers'] = doc.css('.plot_summary_wrapper [itemprop="creator"]').map {|i| parse_name i.text }
+    #watchable['stars'] = doc.css('.plot_summary_wrapper [itemprop="actors"]').map {|i| parse_name i.text }
   end
 
   # other
-  watchable['poster'] = doc.css('.title-overview .poster img').attribute('src').value
+  watchable['poster_uri'] = doc.css('.title-overview .poster img').attribute('src').value
 
-  puts watchable
+  #puts watchable
   watchable
 end
 
@@ -93,17 +100,28 @@ end
 def parse_season(uri)
   doc = parse_uri uri
   season_number = doc.css('#episode_top').text.sub(/Season\u00A0/,'').to_i
-  episodes = doc.css('[itemprop="episodes"]')
-  episodes.map { |e| parse_episode e }.map { |e| e['season_number'] = season_number }
+  episodes = doc.css('.eplist .list_item')
+  episodes.map { |e| parse_episode e }.map { |e| e['season_number'] = season_number; e }
 end
 
+# parse a tv show episode
 def parse_episode episode
   result = {}
-  result['episode_number'] = episode.css('[itemprop="episodeNumber"]').attribute('content').value.to_i
-  result['airdate'] = episode.css('.airdate').text
-  # TODO: episode details
+  result['title'] = episode.at_css('.info [itemprop="name"]').text.strip
+  result['imdb_uri'] =  IMDB + episode.at_css('.info [itemprop="name"]').attribute('href').value
+  result['image_uri'] = episode.at_css('.image img')&.attribute('src')&.value
+  result['episode_number'] = episode.at_css('[itemprop="episodeNumber"]').attribute('content').value.to_i
+  result['airdate'] = begin
+    airdate = episode.at_css('.airdate').text.strip
+    Time.parse airdate if airdate != ''
+  rescue
+    nil
+  end
+  result['imdb_rating'] = episode.at_css('.ipl-rating-star__rating')&.text
+  result['description'] = episode.at_css('[itemprop="description"]').text.strip
+  result
 end
 
-# here's where we kick things off
-uris = %w(/chart/tvmeter /chart/moviemeter)
-uris.map { | uri | parse_summary uri }.flatten
+def parse_name name
+  name.strip.sub(/\s?(\(.*\))?,?$/,'') if name
+end
