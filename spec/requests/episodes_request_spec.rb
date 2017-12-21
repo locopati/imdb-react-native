@@ -5,9 +5,11 @@ RSpec.describe EpisodesController do
     episode_count = 10
     watchable =  create :watchable
     create_list :episode, episode_count, watchable: watchable
-    request.headers.merge! accept:'application/json'
     get :index, params: { watchable_id: watchable.id }
-    expect(assigns(:episodes).count).to eq episode_count
+    json = JSON.parse response.body
+    expect(json.count).to eq episode_count
+    # validate ordering by episode number
+    expect(json.map { |e| e['episode_number'].to_i }).to eq (1..10).to_a
   end
 
   it 'should return all episodes for a season' do
@@ -15,9 +17,9 @@ RSpec.describe EpisodesController do
     season_count = 3
     create_season_episodes season_count, watchable
     (1..season_count).each do |n|
-      request.headers.merge! accept:'application/json'
       get :season, params: { watchable_id: watchable.id, season_number: n }
-      expect(assigns(:episodes).count).to eq n
+      json = JSON.parse response.body
+      expect(json.count).to eq n
     end
   end
 
@@ -27,10 +29,10 @@ RSpec.describe EpisodesController do
     create_season_episodes season_count, watchable
     (1..season_count).each do |season_num|
       (1..season_num).each do |episode_num|
-        request.headers.merge! accept:'application/json'
-        params = { watchable_id: watchable.id, season_number: season_num, episode_number: episode_num }
-        get :show, params: params
-        expect(assigns(:episode)).to eq Episode.find_by(params)
+        get :show, params: { watchable_id: watchable.id, season_number: season_num, episode_number: episode_num }
+        json = JSON.parse response.body
+        episode = Episode.where(watchable: watchable, season_number:  season_num, episode_num: episode_num)
+        json.each { |k, v| expect(v).to eq episode.send(k.to_sym) }
       end
     end
   end
