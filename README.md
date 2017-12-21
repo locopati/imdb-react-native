@@ -1,24 +1,31 @@
 # README
 
-This README would normally document whatever steps are necessary to get the
-application up and running.
+**to setup the database...**
 
-Things you may want to cover:
+```rake db:create db:migrate db:seed```
 
-* Ruby version
+**to run the server...**
 
-* System dependencies
+```rails server```
 
-* Configuration
+**to see the possible routes...**
 
-* Database creation
+```rails routes```
 
-* Database initialization
+**examples for a running server...**
 
-* How to run the test suite
+_all movies & tv shows_
 
-* Services (job queues, cache servers, search engines, etc.)
+http://localhost:3000/watchables
 
-* Deployment instructions
+_all episodes in a tv show_
 
-* ...
+http://localhost:3000/watchables/{id}/episodes
+  
+_all episodes in a tv show season_
+
+http://localhost:3000/watchables/{id}/season/{number}
+  
+_a single tv show episode_
+
+http://localhost:3000/watchables/{id}/season/{number}/episode/{number}
