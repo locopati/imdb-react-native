@@ -20,12 +20,12 @@ http://localhost:3000/watchables
 
 _all episodes in a tv show_
 
-http://localhost:3000/watchables/<id>/episodes
+http://localhost:3000/watchables/{id}/episodes
   
 _all episodes in a tv show season_
 
-http://localhost:3000/watchables/<id>/season/<number>/episodes
+http://localhost:3000/watchables/{id}/season/{number}/episodes
   
 _a single tv show episode_
 
-http://localhost:3000/watchables/<id>/season/<number>/episode/<number>
+http://localhost:3000/watchables/{id}/season/{number}/episode/{number}
