@@ -1,0 +1,1 @@
+json.array! @watchables, partial: 'watchables/watchable', as: :watchable
